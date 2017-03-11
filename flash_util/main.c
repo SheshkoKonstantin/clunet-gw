@@ -1,4 +1,4 @@
-
+#include <time.h>
 #include <stdlib.h>
 #include <stdio.h>   /* Стандартные объявления ввода/вывода */
 #include <string.h>  /* Объявления строковых функций */
@@ -161,24 +161,32 @@ void byte2hex (uint8_t *b, char *hp) {
 }
 
 /* считывает строку из COM порта в rbuf */
-void com_read_line () {
+int com_read_line () {
     char c;
-    rbuf_p=0;
+    if (rbuf[rbuf_p]==0) rbuf_p=0;
+    time_t time1, time2;
+    time(&time1);
+    time(&time2);
     while (1) {
 	int b=read(fd, &c, 1);
 	if (b>0) {
+	    time(&time1);
 	    if ((c!='\r')&&(c!='\n')&&(rbuf_p<rbuf_sz)) rbuf[rbuf_p++]=c;
 	    if (c=='\r') {
 		rbuf[rbuf_p]=0;
 		//printf(">%s",rbuf);
-		break;
+		return 1;
 	    }
 	} else {
-		perror("Ошибка чтения порта!");
-		exit(-1);
+	    time(&time2);
+	    if (difftime(time2,time1)>2) {
+		return 0;
+	    }
+	    //perror("Ошибка чтения порта!");
+	    //exit(-1);
 	}
     }
-    return;
+    return 0;
 }
 
 char fd_type=0;
@@ -242,9 +250,13 @@ void print_hex1 (char * p, unsigned int c) {
 }
 
 /* Ожидает готовности бутлодера */
-void wait_bootbegin () {
+int wait_bootbegin () {
+	time_t time1, time2;
+	time(&time1);
 	while (1) {
-    	    com_read_line();
+	    time(&time2);
+	    if (difftime(time2,time1)>2) return 0;
+    	    if (com_read_line()==0) continue;
     	    //printf("> %s\n",rbuf);
     	    if ((rbuf_p==1+4*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
@@ -259,13 +271,17 @@ void wait_bootbegin () {
     		}
     	    }
 	}
-    return;
+    return 1;
 }
 
 /* Ожидает что бутлодер согласится программироваться */
-void wait_progready () {
+int wait_progready () {
+	time_t time1, time2;
+	time(&time1);
 	while (1) {
-    	    com_read_line();
+	    time(&time2);
+	    if (difftime(time2,time1)>3) return 0;
+    	    if (com_read_line()==0) continue;
     	    //printf(">: %s\n",rbuf);
     	    if ((rbuf_p==1+5*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
@@ -281,13 +297,17 @@ void wait_progready () {
     		}
     	    }
 	}
-    return;
+    return 1;
 }
 
 /* Ожидает что бутлодер схавал порцию информации */
-void wait_progok () {
+int wait_progok () {
+	time_t time1, time2;
+	time(&time1);
 	while (1) {
-    	    com_read_line();
+	    time(&time2);
+	    if (difftime(time2,time1)>2) return 0;
+    	    if (com_read_line()==0) continue;
     	    //printf(">: %s\n",rbuf);
     	    if ((rbuf_p==1+4*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
@@ -301,7 +321,7 @@ void wait_progok () {
     		}
     	    }
 	}
-    return;
+    return 1;
 }
 
 /* Отпрака пакета */
@@ -384,7 +404,6 @@ int open_rport(char* addr, int port) {
         fprintf(stderr, "Не удается создать сокет!\n");
         return -1;
     }
-
     server.sin_addr.s_addr = inet_addr(addr);
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
@@ -392,6 +411,7 @@ int open_rport(char* addr, int port) {
 	fprintf(stderr, "Нет соединения!\n");
         return -1;
     }
+    fcntl(socket1, F_SETFL, O_NONBLOCK);
     return socket1;
 }
 
@@ -448,26 +468,37 @@ void flash_mode(int argc, char **argv) {
     
     
     // Работа с устройством    
+    printf ("Подключение к устройству");
+    do {
     if (device_address != 0xff) { // Если выбран конкретный адрес, можно отправить команду на перезагрузку
+	printf(".");fflush(stdout);
 	send_endprog();
 	send_reset();
     }
-    wait_bootbegin();
-    send_beginprog();
-    wait_progready();
+    } while (wait_bootbegin()==0);
+    printf("\n");
+
+    do {
+	send_beginprog();
+    } while (wait_progready()==0);
     // Запись данных
     printf ("Прогаю");
     uchar page=0;
-        int res=0;
+    int res=0;
+    
+    time_t time1, time2;
+    time(&time1);
     do {
 	printf(".");fflush(stdout);
-	res=prog_page(page++);
-	wait_progok();
+	do {
+	    res=prog_page(page++);
+	} while (wait_progok()==0);
     } while (res==0);
     send_endprog();
     send_endprog();
-    
     printf ("Готово!\n");
+    time(&time2);
+    printf ("Время загрузки: %.1f\n",difftime(time2,time1));
     sleep(1);
     close(fd);
     return;

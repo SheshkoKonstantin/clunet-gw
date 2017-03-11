@@ -135,7 +135,7 @@ void data_received(uint8_t src_address, uint8_t command, char* data, uint8_t siz
 
 uint8_t check_pack() {
     if (rbuf_p%2==1) return 0;
-    for (uint8_t i;i<rbuf_p;++i)
+    for (uint8_t i=0;i<rbuf_p;++i)
 	if (!(((rbuf[i]>='0')&&(rbuf[i]<='9')) ||
 	      ((rbuf[i]>='A')&&(rbuf[i]<='F')) ||
 	      ((rbuf[i]>='a')&&(rbuf[i]<='f'))))  return 0;
