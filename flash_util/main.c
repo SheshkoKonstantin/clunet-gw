@@ -28,6 +28,8 @@ int ff;
 
 uchar device_address=0xff;
 int page_size=64;
+int flags=0;
+#define F_SELFPROG 0x01
 
 struct program_data_struct {
     char data[MAX_FLASH_SIZE];
@@ -258,6 +260,10 @@ int wait_bootbegin () {
 	    if (difftime(time2,time1)>2) return 0;
     	    if (com_read_line()==0) continue;
     	    //printf("> %s\n",rbuf);
+    	    
+    	    if ((flags&F_SELFPROG)&&(strncmp(rbuf,"R00",3)==0)) { // если шлюз прогает сам себя
+    		return 2;
+    	    } else
     	    if ((rbuf_p==1+4*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
     		uchar comm=hex2byte(rbuf+1+2);
@@ -283,6 +289,13 @@ int wait_progready () {
 	    if (difftime(time2,time1)>3) return 0;
     	    if (com_read_line()==0) continue;
     	    //printf(">: %s\n",rbuf);
+    	    if ((flags|F_SELFPROG)&&(rbuf_p==7)&&(rbuf[0]=='R')&&(rbuf[1]=='0')&&(rbuf[2]=='2')&&(rbuf[3]=='0')&&(rbuf[4]=='0')) { // если программирование шлюза
+    	    	uchar data1=hex2byte(rbuf+3);
+    		uchar data2=hex2byte(rbuf+5);
+		page_size=data2;
+		printf ("Размер страницы: %d\n", page_size);
+		break;
+    	    } else // иначе
     	    if ((rbuf_p==1+5*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
     		uchar comm=hex2byte(rbuf+1+2);
@@ -309,6 +322,9 @@ int wait_progok () {
 	    if (difftime(time2,time1)>2) return 0;
     	    if (com_read_line()==0) continue;
     	    //printf(">: %s\n",rbuf);
+    	    if ((flags&F_SELFPROG)&&(strncmp(rbuf,"R04",3)==0)) { // если программирование самого шлюза
+    		break;
+    	    } else // иначе устройство в сети
     	    if ((rbuf_p==1+4*2)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
     		uchar comm=hex2byte(rbuf+1+2);
@@ -344,21 +360,33 @@ void send_pack(uchar addr, uchar prio, uchar comm, uchar size, uchar *data) {
 
 /* Отправляет устройству запрос на перезапуск */
 void send_reset() {
-    send_pack(device_address,8,3,0,NULL);
+    if (flags|F_SELFPROG) {
+	write_str("ZREBOOT\r");
+    } else {
+	send_pack(device_address,8,3,0,NULL);
+    }
     return;
 }
 
 /* Отправляет устройству - закончить програмирование */
 void send_endprog() {
-    uchar byte=5; // код конца программирования
-    send_pack(device_address,8,2,1,&byte);
+    if (flags|F_SELFPROG) {
+	write_str("S05\r");
+    } else {
+	uchar byte=5; // код конца программирования
+	send_pack(device_address,8,2,1,&byte);
+    }
     return;
 }
 
 /* Отправляет устройству - начать програмирование */
 void send_beginprog() {
-    uchar byte=1; // код начала програмирования
-    send_pack(device_address,8,2,1,&byte);
+    if (flags|F_SELFPROG) {
+	write_str("S01\r");
+    } else {
+	uchar byte=1; // код начала програмирования
+	send_pack(device_address,8,2,1,&byte);
+    }
     return;
 }
 
@@ -384,13 +412,31 @@ int prog_page(uint page_num) {
     uchar buf[256];
     uint addr=page_num*page_size;
     uchar size=page_size+5;
-    buf[0]=3;				// команда записи страницы 3
-    buf[1]=(uchar)(addr>>0);		// запись младшего байта 1
-    buf[2]=(uchar)(addr>>8);		// запись старшего байта 2
-    buf[3]=0;				// запись старшего байта 3
-    buf[4]=0;				// запись старшего байта 4
-    memcpy(buf+5,prog_data.data+addr,page_size);
-    send_pack(device_address,8,2,size,buf);
+    if (flags|F_SELFPROG) { // если програамирование самого шлюза
+	buf[0]='S';
+	buf[1]='0';
+	buf[2]='3';
+	byte2hex(((uchar *)&addr),buf+3);    // сначала младший байт
+	byte2hex(((uchar *)&addr)+1,buf+5);  // второй байт
+	buf[7]='0';
+	buf[8]='0';
+	buf[9]='0';
+	buf[10]='0';
+	for (int i=0;i<page_size;++i) {
+	    byte2hex(prog_data.data+addr+i,buf+11+2*i);
+	}
+	buf[11+2*page_size]='\r';
+	buf[11+2*page_size+1]='\0';
+	write_str(buf);
+    } else { // иначе программирование устройства в сети
+	buf[0]=3;				// команда записи страницы 3
+	buf[1]=(uchar)(addr>>0);		// запись младшего байта 1
+	buf[2]=(uchar)(addr>>8);		// запись старшего байта 2
+	buf[3]=0;				// запись старшего байта 3
+	buf[4]=0;				// запись старшего байта 4
+	memcpy(buf+5,prog_data.data+addr,page_size);
+	send_pack(device_address,8,2,size,buf);
+    }
     if (prog_data.last_data<=addr+page_size) return 1;
     return 0;
 }
@@ -422,6 +468,10 @@ void flash_mode(int argc, char **argv) {
     hex_file_path=argv[1];
     if (argc>2) { // если указан адрес Clunet
 	int addr=atoi(argv[2]);
+	if (strcmp(argv[2],"self")==0) {
+	    flags|=F_SELFPROG;
+	    printf ("Режим программирование шлюза\n");
+	} else
 	if ((addr<0)||(addr>255)) {
 	    fprintf(stderr,"Адрес должен быть от 0 до 255\n");
 	    exit(-1);
