@@ -1,9 +1,7 @@
 # Main program name
-PRG              = clunet-demo
+PRG              = main
 
 # AVRDUDE's config options for 'program' target
-#LFUSE            = EF
-#HFUSE            = C9
 LFUSE            = E4
 HFUSE            = D9
 PROGRAMMER_MCU   = m8
@@ -12,10 +10,10 @@ PROGRAMMER_PORT  = usb
 
 # Config options of CLUNET flash tool for optional 'program' target
 CLUNET_PATH      = .
-CLUNET_FLASHER   = D:/Soft/Soft/clunetflasher/clunetflasher.exe
-CLUNET_IP        = 10.13.0.254
-CLUNET_PORT      = 10009
-CLUNET_DEVICE_ID = 88
+CLUNET_FLASHER   = /home/kosta/dev/clunet-gw/flash_util/util
+CLUNET_IP        = 192.168.88.14
+CLUNET_PORT      = 8888
+CLUNET_DEVICE_ID = 100
 
 # MCU
 MCU_TARGET       = atmega8
@@ -49,7 +47,7 @@ $(PRG).elf: $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 # dependency:
-demo.o: demo.c
+main.o: main.c
 
 clean:
 	rm -rf *.o $(PRG).elf *.eps *.png *.pdf *.bak 
@@ -120,4 +118,8 @@ pdf: $(PRG).pdf
 
 program: hex
 #	$(CLUNET_FLASHER) $(CLUNET_IP) $(CLUNET_PORT) $(CLUNET_DEVICE_ID) $(PRG).hex
-	avrdude -V -p $(PROGRAMMER_MCU) -c $(PROGRAMMER_TYPE) -P $(PROGRAMMER_PORT) -U flash:w:$(PRG).hex -U lfuse:w:0x$(LFUSE):m -U hfuse:w:0x$(HFUSE):m
+#	avrdude -V -p $(PROGRAMMER_MCU) -c $(PROGRAMMER_TYPE) -P $(PROGRAMMER_PORT) -U flash:w:$(PRG).hex -U lfuse:w:0x$(LFUSE):m -U hfuse:w:0x$(HFUSE):m
+	echo "program disabled!"
+
+prog: hex
+	$(CLUNET_FLASHER) $(PRG).hex self $(CLUNET_IP):$(CLUNET_PORT)
