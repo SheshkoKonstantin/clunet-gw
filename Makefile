@@ -13,7 +13,7 @@ CLUNET_PATH      = .
 CLUNET_FLASHER   = /home/kosta/dev/clunet-gw/flash_util/util
 CLUNET_IP        = 192.168.88.14
 CLUNET_PORT      = 8888
-CLUNET_DEVICE_ID = 100
+CLUNET_DEVICE_ID = 1
 
 # MCU
 MCU_TARGET       = atmega8

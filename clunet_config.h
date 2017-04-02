@@ -24,10 +24,10 @@ SOFTWARE.
 /* CONFIGURE YOUR DEVICE HERE */
 
 /* Device address (0-254) */
-#define CLUNET_DEVICE_ID 88
+#define CLUNET_DEVICE_ID 1
 
 /* Device name */
-#define CLUNET_DEVICE_NAME "CLUNET device"
+#define CLUNET_DEVICE_NAME "CLUNET-RPi GW"
 
 /* Buffers sizes (memory usage) */
 #define CLUNET_SEND_BUFFER_SIZE 128

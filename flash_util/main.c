@@ -289,7 +289,7 @@ int wait_progready () {
 	    if (difftime(time2,time1)>3) return 0;
     	    if (com_read_line()==0) continue;
     	    //printf(">: %s\n",rbuf);
-    	    if ((flags|F_SELFPROG)&&(rbuf_p==7)&&(rbuf[0]=='R')&&(rbuf[1]=='0')&&(rbuf[2]=='2')&&(rbuf[3]=='0')&&(rbuf[4]=='0')) { // если программирование шлюза
+    	    if ((flags&F_SELFPROG)&&(rbuf_p==7)&&(rbuf[0]=='R')&&(rbuf[1]=='0')&&(rbuf[2]=='2')&&(rbuf[3]=='0')&&(rbuf[4]=='0')) { // если программирование шлюза
     	    	uchar data1=hex2byte(rbuf+3);
     		uchar data2=hex2byte(rbuf+5);
 		page_size=data2;
@@ -360,7 +360,7 @@ void send_pack(uchar addr, uchar prio, uchar comm, uchar size, uchar *data) {
 
 /* Отправляет устройству запрос на перезапуск */
 void send_reset() {
-    if (flags|F_SELFPROG) {
+    if (flags&F_SELFPROG) {
 	write_str("ZREBOOT\r");
     } else {
 	send_pack(device_address,8,3,0,NULL);
@@ -370,7 +370,7 @@ void send_reset() {
 
 /* Отправляет устройству - закончить програмирование */
 void send_endprog() {
-    if (flags|F_SELFPROG) {
+    if (flags&F_SELFPROG) {
 	write_str("S05\r");
     } else {
 	uchar byte=5; // код конца программирования
@@ -381,7 +381,7 @@ void send_endprog() {
 
 /* Отправляет устройству - начать програмирование */
 void send_beginprog() {
-    if (flags|F_SELFPROG) {
+    if (flags&F_SELFPROG) {
 	write_str("S01\r");
     } else {
 	uchar byte=1; // код начала програмирования
@@ -412,7 +412,7 @@ int prog_page(uint page_num) {
     uchar buf[256];
     uint addr=page_num*page_size;
     uchar size=page_size+5;
-    if (flags|F_SELFPROG) { // если програамирование самого шлюза
+    if (flags&F_SELFPROG) { // если програамирование самого шлюза
 	buf[0]='S';
 	buf[1]='0';
 	buf[2]='3';
