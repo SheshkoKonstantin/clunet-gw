@@ -1,3 +1,5 @@
+//#define _BSD_SOURCE
+
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>   /* Стандартные объявления ввода/вывода */
@@ -639,15 +641,6 @@ int try_accept () {
     return 1;
 }
 
-void set_fds (fd_set *fds) {
-    struct sock_cont *ptr=socks;
-    FD_ZERO (fds);
-    while (ptr!=NULL) {
-	FD_SET(ptr->sock, fds);
-	ptr=ptr->next;
-    }
-    return;
-}
 
 void send_all_sockets(char *msg, int len) {
     struct sock_cont *ptr=socks;
@@ -688,15 +681,6 @@ void process_sockets() {
     return;
 }
 
-int try_select (fd_set *fds) {
-    if (socks==NULL) return 0;
-    int ret = select(socks->sock+1, fds, NULL, NULL, NULL);
-    if(ret == -1) {
-    	fprintf(stderr,"select error!\n");
-    	exit(-1);
-    }
-    return ret;
-}
 
 struct termios oldt;
 int oldf;
