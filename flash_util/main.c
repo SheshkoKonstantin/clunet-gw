@@ -1,6 +1,7 @@
 //#define _BSD_SOURCE
 
 #include <time.h>
+#include <sys/time.h>
 #include <stdlib.h>
 #include <stdio.h>   /* Стандартные объявления ввода/вывода */
 #include <string.h>  /* Объявления строковых функций */
@@ -37,6 +38,11 @@ struct program_data_struct {
     char data[MAX_FLASH_SIZE];
     uint last_data;
 } prog_data;
+
+
+int time_diff_ms(struct timeval t1, struct timeval t2) {
+    return (((t1.tv_sec - t2.tv_sec) * 1000000) + (t1.tv_usec - t2.tv_usec))/1000;
+}
 
 
 /* Записывает значение получив указатель на строку с хексом */
@@ -164,7 +170,7 @@ void byte2hex (uint8_t *b, char *hp) {
     return;
 }
 
-/* считывает строку из COM порта в rbuf */
+/* считывает строку из COM/TCP порта в rbuf */
 int com_read_line () {
     char c;
     if (rbuf[rbuf_p]==0) rbuf_p=0;
@@ -192,6 +198,35 @@ int com_read_line () {
     }
     return 0;
 }
+
+
+/* считывает строку из COM/TCP порта в rbuf */
+int com_read_line1 (unsigned int delay) {
+    char c;
+    if (rbuf[rbuf_p]==0) rbuf_p=0;
+    struct timeval time1, time2;
+    gettimeofday(&time1, NULL);
+    gettimeofday(&time2, NULL);
+    while (1) {
+	int b=read(fd, &c, 1);
+	if (b>0) {
+	    gettimeofday(&time1, NULL);
+	    if ((c!='\r')&&(c!='\n')&&(rbuf_p<rbuf_sz)) rbuf[rbuf_p++]=c;
+	    if (c=='\r') {
+		rbuf[rbuf_p]=0;
+		return 1;
+	    }
+	} else {
+	    gettimeofday(&time2, NULL);
+	    if (time_diff_ms(time2,time1)>delay) {
+		return 0;
+	    }
+	}
+    }
+    return 0;
+}
+
+
 
 char fd_type=0;
 
@@ -796,6 +831,115 @@ void server_mode(int argc, char **argv) {
 }
 
 
+/* Отправляет устройству ping */
+void send_ping(uchar addr) {
+    if (flags&F_SELFPROG) {
+    } else {
+	send_pack(addr,8,0xfe,0,NULL);
+    }
+    return;
+}
+
+
+/* Ожидает pong */
+uchar wait_pong () {
+	while (1) {
+    	    if (com_read_line1(200)==0) return 0xff;
+    	    if ((rbuf_p==7)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
+    		uchar addr=hex2byte(rbuf+1);
+    		uchar comm=hex2byte(rbuf+1+2);
+    		uchar size=hex2byte(rbuf+1+4);
+    		if ((comm==0xff)&&(size==0)) { // если нужные команда, размер
+    			return addr;
+    		}
+    	    }
+	}
+    return 0xff;
+}
+
+/* Попытка Discovery (имя устройства) */
+char *try_discover (uchar address) {
+	send_pack(address,8,0x00,0,NULL);
+	while (1) {
+    	    if (com_read_line1(2000)==0) return NULL;
+    	    if ((rbuf_p>=7)&&(rbuf[0]=='P')) {
+    		uchar addr=hex2byte(rbuf+1);
+    		uchar comm=hex2byte(rbuf+1+2);
+    		uchar size=hex2byte(rbuf+1+4);
+    		if ((comm==0x01)&&(addr==address)) { // если нужные команда, размер
+    			char *buffer = (char*) malloc (size+1);
+    			for (int i=0;i<size;++i) {
+    			    buffer[i]=hex2byte(rbuf+1+6+i*2);
+    			}
+    			buffer[size]=0x00;
+    			return buffer;
+    		}
+    	    }
+	}
+    return NULL;
+}
+
+
+/* Режим обнаружения */
+void discover_mode(int argc, char **argv) {
+    printf("Discover mode>\n");
+
+    if (argc>2) { // пусть к последовательному порту
+	tty_file_path=argv[2];
+	printf ("Порт: %s\n",tty_file_path);
+    }
+
+    // Если надо подключаться через удаленный порт
+    char *dots=strstr(tty_file_path,":");
+    if (dots!=NULL) {
+	char buf[128];
+	strcpy(buf,dots+1);
+	int rport=atoi(buf);
+	if ((rport<=0)||(rport>0xffff)) {
+	    fprintf(stderr,"Плохой порт: %s\n",buf);
+	}
+	*dots=0;
+	strcpy(buf,tty_file_path);
+	printf("Подключение на %s:%d...\n",buf,rport);
+	fd=open_rport(buf,rport);
+	if (fd < 0)   {
+	    perror("Не открывается tcp порт!");
+	    exit(-1);
+	}
+	fd_type=1;
+    } else {
+	fd=open_port();
+	if (fd < 0)   {
+	    perror("Не открывается порт!");
+	    exit(-1);
+	}
+	port_setup();
+    }
+
+    printf ("Поиск устройств...\n");
+    for (int i=0; i<255; ++i) {
+	send_ping(i);
+	uchar pong = wait_pong();
+	if (pong !=0xff) {
+	    char *disc = try_discover(pong);
+	    if (disc != NULL) {
+		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",pong,pong,disc);
+	    } else {
+		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: не определяется\n",pong,pong);
+	    }
+	    free(disc);
+	}
+    }
+
+    close(fd);
+    return;
+}
+
+
+
+
+
+
 int main (int argc, char **argv) {
     if (argc<2) { // если не указаны параметры
 	fprintf(stderr,"Надо указывать параметры!\nНапример:\n%s ./main.hex [99] [/dev/ttyUSB0]\n", argv[0]);
@@ -803,6 +947,8 @@ int main (int argc, char **argv) {
     }
     if (strcmp(argv[1],"srv")==0) {
 	server_mode(argc,argv);
+    } else if (strcmp(argv[1],"discover")==0) {
+	discover_mode(argc,argv);
     } else {
 	flash_mode(argc,argv);
     }
