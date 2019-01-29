@@ -844,7 +844,7 @@ void send_ping(uchar addr) {
 /* Ожидает pong */
 uchar wait_pong () {
 	while (1) {
-    	    if (com_read_line1(200)==0) return 0xff;
+    	    if (com_read_line1(100)==0) return 0xff;
     	    if ((rbuf_p==7)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
     		uchar addr=hex2byte(rbuf+1);
     		uchar comm=hex2byte(rbuf+1+2);
@@ -880,15 +880,11 @@ char *try_discover (uchar address) {
 }
 
 
-/* Режим обнаружения */
-void discover_mode(int argc, char **argv) {
-    printf("Discover mode>\n");
-
-    if (argc>2) { // пусть к последовательному порту
-	tty_file_path=argv[2];
+void open_terminal (char *port) {
+    if (port) { // пусть к последовательному порту
+	tty_file_path=port;
 	printf ("Порт: %s\n",tty_file_path);
     }
-
     // Если надо подключаться через удаленный порт
     char *dots=strstr(tty_file_path,":");
     if (dots!=NULL) {
@@ -915,30 +911,103 @@ void discover_mode(int argc, char **argv) {
 	}
 	port_setup();
     }
+    return;
+}
 
+
+/* убираем 0xff */
+void chop_str(uchar *str) {
+    int size=strlen(str);
+    for (int i=0;i<size;++i) {
+	if (str[i]==0xff) {
+	    str[i]=0;
+	}
+    }
+    return;
+}
+
+
+/* Режим обнаружения */
+void discover_mode(int argc, char **argv) {
+    printf("Discover mode>\n");
+    if (argc>2) {
+	open_terminal(argv[2]);
+    } else {
+	open_terminal(NULL);
+    }
     printf ("Поиск устройств...\n");
     for (int i=0; i<255; ++i) {
 	send_ping(i);
 	uchar pong = wait_pong();
 	if (pong !=0xff) {
-	    char *disc = try_discover(pong);
-	    if (disc != NULL) {
-		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",pong,pong,disc);
+	    char *name = try_discover(pong);
+	    if (name != NULL) {
+		chop_str(name);
+		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",pong,pong,name);
+		free(name);
 	    } else {
 		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: не определяется\n",pong,pong);
 	    }
-	    free(disc);
 	}
     }
-
     close(fd);
     return;
 }
 
 
+/* Попытка установить имя устройства */
+char *device_try_set_name (uchar address, char *name) {
+	uchar size=strlen(name);
+	send_pack(address,8,0xf8,size,name);
+	time_t time1, time2;
+	time(&time1);
+	while (1) {
+	    time(&time2);
+	    if (difftime(time2,time1)>2) {
+		return NULL;
+	    }
+    	    if (com_read_line1(200)==0) continue;
+    	    if ((rbuf_p>=7)&&(rbuf[0]=='P')) {
+    		uchar addr=hex2byte(rbuf+1);
+    		uchar comm=hex2byte(rbuf+1+2);
+    		uchar size=hex2byte(rbuf+1+4);
+    		if ((comm==0xf9)&&(addr==address)) { // если нужные команда, размер
+    			char *buffer = (char*) malloc (size+1);
+    			for (int i=0;i<size;++i) {
+    			    buffer[i]=hex2byte(rbuf+1+6+i*2);
+    			}
+    			buffer[size]=0x00;
+    			return buffer;
+    		}
+    	    }
+	}
+    return NULL;
+}
 
-
-
+/* Установить имя устройства */
+void setname_mode(int argc, char **argv) {
+    printf("Установка имени устройства.\n");
+    if (argc<4) {
+	printf ("Не хватает параметров. Укажите setname адрес имя [порт]\n");
+    }
+    if (argc>4) {
+	open_terminal(argv[4]);
+    } else {
+	open_terminal(NULL);
+    }
+    uchar address=atoi(argv[2]);
+    char *name=argv[3];
+    printf("Установка имени устройства...\n");
+    char *newname = device_try_set_name(address,name);
+    if (newname==NULL) {
+	printf ("Ошибка установки имени '%s' для устройства с адресом %03d (0x%02x).\n",name,address,address);
+    } else {
+	chop_str(newname);
+	printf ("Новое имя устройства (%s).\n",newname);
+    }
+    close(fd);
+    return;
+}
 
 int main (int argc, char **argv) {
     if (argc<2) { // если не указаны параметры
@@ -949,7 +1018,9 @@ int main (int argc, char **argv) {
 	server_mode(argc,argv);
     } else if (strcmp(argv[1],"discover")==0) {
 	discover_mode(argc,argv);
-    } else {
+    } else if (strcmp(argv[1],"setname")==0) {
+	setname_mode(argc,argv);
+    }else {
 	flash_mode(argc,argv);
     }
 return 0;
