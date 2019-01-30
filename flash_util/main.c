@@ -951,12 +951,27 @@ void chop_str(uchar *str) {
 
 /* Режим обнаружения */
 void discover_mode(int argc, char **argv) {
-    printf("Discover mode>\n");
+    printf("Discover mode.\n");
+    uchar a_from=0;
+    uchar a_to=254;
+    if (argc==3) {
+	a_from=atoi(argv[2]);
+	a_to=a_from;
+    }
+    if (argc==4) {
+	a_from=atoi(argv[2]);
+	a_to=atoi(argv[3]);
+    }
     open_terminal(tty_file_path);
     printf ("Поиск устройств...\n");
-    for (int i=0; i<255; ++i) {
+    for (int i=a_from;i<=a_to;++i) {
 	send_ping(i);
-	uchar pong = wait_pong();
+	uchar pong;
+	if (a_from==a_to) {
+	    pong = wait_pong1(3000,i);
+	} else {
+	    pong = wait_pong();
+	}
 	if (pong !=0xff) {
 	    char *name = try_discover(pong);
 	    if (name != NULL) {
