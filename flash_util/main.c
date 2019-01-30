@@ -857,6 +857,28 @@ uchar wait_pong () {
     return 0xff;
 }
 
+uchar wait_pong1 (unsigned int wait_ms, uchar wait_addr) {
+	struct timeval time1, time2;
+	gettimeofday(&time1, NULL);
+	while (1) {
+	    gettimeofday(&time2, NULL);
+	    if (time_diff_ms(time2,time1)>wait_ms) {
+		return 0xff;
+	    }
+    	    if (com_read_line1(100)==0) continue;
+    	    if ((rbuf_p==7)&&(rbuf[0]=='P')) { // если размер как у ожидаемого пакета
+    		uchar addr=hex2byte(rbuf+1);
+    		uchar comm=hex2byte(rbuf+1+2);
+    		uchar size=hex2byte(rbuf+1+4);
+    		if ((comm==0xff)&&(size==0)&&(addr=wait_addr)) { // если нужные команда, размер
+    			return addr;
+    		}
+    	    }
+	}
+    return 0xff;
+}
+
+
 /* Попытка Discovery (имя устройства) */
 char *try_discover (uchar address) {
 	send_pack(address,8,0x00,0,NULL);
@@ -980,6 +1002,31 @@ char *device_try_set_name (uchar address, char *name) {
     return NULL;
 }
 
+/* Попытка установить адрес устроства */
+uchar device_try_set_addr (uchar address, uchar new_address) {
+	send_pack(address,8,0xfc,1,&new_address);
+	time_t time1, time2;
+	time(&time1);
+	while (1) {
+	    time(&time2);
+	    if (difftime(time2,time1)>2) {
+		return 0xff;
+	    }
+    	    if (com_read_line1(200)==0) continue;
+    	    if ((rbuf_p>=7)&&(rbuf[0]=='P')) {
+    		uchar addr=hex2byte(rbuf+1);
+    		uchar comm=hex2byte(rbuf+1+2);
+    		uchar size=hex2byte(rbuf+1+4);
+    		if ((comm==0xfd)&&(addr==new_address)&&(size==1)) { // если нужные команда, размер
+    			uchar newa=hex2byte(rbuf+1+6);
+    			return newa;
+    		}
+    	    }
+	}
+    return 0xff;
+}
+
+
 /* Установить имя устройства */
 void setname_mode(int argc, char **argv) {
     printf("Установка имени устройства.\n");
@@ -997,6 +1044,41 @@ void setname_mode(int argc, char **argv) {
     } else {
 	chop_str(newname);
 	printf ("Новое имя устройства (%s).\n",newname);
+    }
+    close(fd);
+    return;
+}
+
+/* Установить адрес устройства */
+void setaddr_mode(int argc, char **argv) {
+    printf("Установка адреса устройства.\n");
+    if (argc<3) {
+	printf ("Не хватает параметров. Укажите setaddr адрес новый_адрес\n");
+	exit(-1);
+    }
+    open_terminal(tty_file_path);
+    uchar address=atoi(argv[2]);
+    uchar new_address=atoi(argv[3]);
+    printf("Проверка нового адреса...\n");
+    send_ping(new_address);
+    if (wait_pong1(1000,new_address)!=0xff) {
+	printf ("Адрес %03d (0x%02x) уже занят.\n",new_address,new_address);
+	char *name = try_discover(new_address);
+	if (name != NULL) {
+	    chop_str(name);
+	    printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",new_address,new_address,name);
+	    free(name);
+	} else {
+	    printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: не определяется\n",new_address,new_address);
+	}
+	exit(-1);
+    }
+    printf("Установка адреса устройства...\n");
+    uchar newa = device_try_set_addr(address,new_address);
+    if (newa!=new_address) {
+	printf ("Ошибка установки адреса %03d (0x%02x) для устройства с адресом %03d (0x%02x).\n",new_address,new_address,address,address);
+    } else {
+	printf ("Новый адрес устройства %03d (0x%02x).\n",newa,newa);
     }
     close(fd);
     return;
@@ -1033,7 +1115,9 @@ int main (int argc, char **argv) {
 	discover_mode(argc,argv);
     } else if (strcmp(argv[1],"setname")==0) {
 	setname_mode(argc,argv);
-    }else {
+    } else if (strcmp(argv[1],"setaddr")==0) {
+	setaddr_mode(argc,argv);
+    } else {
 	flash_mode(argc,argv);
     }
 return 0;
