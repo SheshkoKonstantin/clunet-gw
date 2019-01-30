@@ -930,11 +930,7 @@ void chop_str(uchar *str) {
 /* Режим обнаружения */
 void discover_mode(int argc, char **argv) {
     printf("Discover mode>\n");
-    if (argc>2) {
-	open_terminal(argv[2]);
-    } else {
-	open_terminal(NULL);
-    }
+    open_terminal(tty_file_path);
     printf ("Поиск устройств...\n");
     for (int i=0; i<255; ++i) {
 	send_ping(i);
@@ -987,14 +983,11 @@ char *device_try_set_name (uchar address, char *name) {
 /* Установить имя устройства */
 void setname_mode(int argc, char **argv) {
     printf("Установка имени устройства.\n");
-    if (argc<4) {
-	printf ("Не хватает параметров. Укажите setname адрес имя [порт]\n");
+    if (argc<3) {
+	printf ("Не хватает параметров. Укажите setname адрес имя\n");
+	exit(-1);
     }
-    if (argc>4) {
-	open_terminal(argv[4]);
-    } else {
-	open_terminal(NULL);
-    }
+    open_terminal(tty_file_path);
     uchar address=atoi(argv[2]);
     char *name=argv[3];
     printf("Установка имени устройства...\n");
@@ -1009,7 +1002,27 @@ void setname_mode(int argc, char **argv) {
     return;
 }
 
+void read_config () {
+    FILE * f = fopen("util.conf","r");
+    if (f) {
+	char str[256];
+	while(!feof(f)) {
+            fscanf(f,"%s\n",str);
+            if (strstr(str,"port=")==str) {
+        	char *dot=strstr(str,"=");
+        	++dot;
+        	tty_file_path=malloc(strlen(dot));
+        	strcpy(tty_file_path,dot);
+            }
+        }
+	fclose(f);
+    }
+    return;
+}
+
+
 int main (int argc, char **argv) {
+    read_config();
     if (argc<2) { // если не указаны параметры
 	fprintf(stderr,"Надо указывать параметры!\nНапример:\n%s ./main.hex [99] [/dev/ttyUSB0]\n", argv[0]);
 	exit(-1);
