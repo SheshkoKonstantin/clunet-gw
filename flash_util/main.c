@@ -1018,8 +1018,16 @@ char *device_try_set_name (uchar address, char *name) {
 }
 
 /* Попытка установить адрес устроства */
-uchar device_try_set_addr (uchar address, uchar new_address) {
-	send_pack(address,8,0xfc,1,&new_address);
+uchar device_try_set_addr (uchar address, uchar new_address, uint8_t param) {
+	uint8_t COMMAND=0xfc;
+	uint8_t COMMAND_REPLY=0xfd;
+	uint8_t ADDRESS_REPLY=new_address;
+	if (param==0x01) {
+	    COMMAND=0xfa;
+	    COMMAND_REPLY=0xfb;
+	    ADDRESS_REPLY=address;
+	}
+	send_pack(address,8,COMMAND,1,&new_address);
 	time_t time1, time2;
 	time(&time1);
 	while (1) {
@@ -1032,7 +1040,7 @@ uchar device_try_set_addr (uchar address, uchar new_address) {
     		uchar addr=hex2byte(rbuf+1);
     		uchar comm=hex2byte(rbuf+1+2);
     		uchar size=hex2byte(rbuf+1+4);
-    		if ((comm==0xfd)&&(addr==new_address)&&(size==1)) { // если нужные команда, размер
+    		if ((comm==COMMAND_REPLY)&&(addr==ADDRESS_REPLY)&&(size==1)) { // если нужные команда, размер
     			uchar newa=hex2byte(rbuf+1+6);
     			return newa;
     		}
@@ -1065,7 +1073,7 @@ void setname_mode(int argc, char **argv) {
 }
 
 /* Установить адрес устройства */
-void setaddr_mode(int argc, char **argv) {
+void setaddr_mode(int argc, char **argv, uint8_t param) {
     printf("Установка адреса устройства.\n");
     if (argc<3) {
 	printf ("Не хватает параметров. Укажите setaddr адрес новый_адрес\n");
@@ -1074,22 +1082,24 @@ void setaddr_mode(int argc, char **argv) {
     open_terminal(tty_file_path);
     uchar address=atoi(argv[2]);
     uchar new_address=atoi(argv[3]);
-    printf("Проверка нового адреса...\n");
-    send_ping(new_address);
-    if (wait_pong1(1000,new_address)!=0xff) {
-	printf ("Адрес %03d (0x%02x) уже занят.\n",new_address,new_address);
-	char *name = try_discover(new_address);
-	if (name != NULL) {
-	    chop_str(name);
-	    printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",new_address,new_address,name);
-	    free(name);
-	} else {
-	    printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: не определяется\n",new_address,new_address);
+    if (address!=new_address) {
+	printf("Проверка нового адреса...\n");
+	send_ping(new_address);
+	if (wait_pong1(1000,new_address)!=0xff) {
+	    printf ("Адрес %03d (0x%02x) уже занят.\n",new_address,new_address);
+	    char *name = try_discover(new_address);
+	    if (name != NULL) {
+		chop_str(name);
+		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: %s\n",new_address,new_address,name);
+		free(name);
+	    } else {
+		printf ("Надено устройство. Адрес: %03d (0x%02x) Имя: не определяется\n",new_address,new_address);
+	    }
+	    exit(-1);
 	}
-	exit(-1);
     }
     printf("Установка адреса устройства...\n");
-    uchar newa = device_try_set_addr(address,new_address);
+    uchar newa = device_try_set_addr(address,new_address,param);
     if (newa!=new_address) {
 	printf ("Ошибка установки адреса %03d (0x%02x) для устройства с адресом %03d (0x%02x).\n",new_address,new_address,address,address);
     } else {
@@ -1150,7 +1160,9 @@ int main (int argc, char **argv) {
     } else if (strcmp(argv[1],"setname")==0) {
 	setname_mode(argc,argv);
     } else if (strcmp(argv[1],"setaddr")==0) {
-	setaddr_mode(argc,argv);
+	setaddr_mode(argc,argv,0x00);
+    } else if (strcmp(argv[1],"setaddreeprom")==0) {
+	setaddr_mode(argc,argv,0x01);
     } else if (strcmp(argv[1],"sndcmd")==0) {
 	sendcommand_mode(argc,argv);
     } else {
