@@ -1099,6 +1099,25 @@ void setaddr_mode(int argc, char **argv) {
     return;
 }
 
+/* Отправка команды */
+void sendcommand_mode(int argc, char **argv) {
+    printf("Отправка команды на устройство.\n");
+    if (argc<3) {
+	printf ("Не хватает параметров. Укажите sndcmd адрес команда\n");
+	exit(-1);
+    }
+    open_terminal(tty_file_path);
+    uchar address=atoi(argv[2]);
+    uchar command=atoi(argv[3]);
+    
+    printf("Отправка команды устройства...\n");
+    send_pack(address,3,command,0,NULL);
+    
+    close(fd);
+    return;
+}
+
+
 void read_config () {
     FILE * f = fopen("util.conf","r");
     if (f) {
@@ -1132,6 +1151,8 @@ int main (int argc, char **argv) {
 	setname_mode(argc,argv);
     } else if (strcmp(argv[1],"setaddr")==0) {
 	setaddr_mode(argc,argv);
+    } else if (strcmp(argv[1],"sndcmd")==0) {
+	sendcommand_mode(argc,argv);
     } else {
 	flash_mode(argc,argv);
     }
