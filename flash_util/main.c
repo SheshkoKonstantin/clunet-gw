@@ -3,14 +3,16 @@
 #include <time.h>
 #include <sys/time.h>
 #include <stdlib.h>
-#include <stdio.h>   /* Стандартные объявления ввода/вывода */
-#include <string.h>  /* Объявления строковых функций */
-#include <unistd.h>  /* Объявления стандартных функций UNIX */
-#include <fcntl.h>   /* Объявления управления файлами */
-#include <errno.h>   /* Объявления кодов ошибок */
-#include <termios.h> /* Объявления управления POSIX-терминалом */
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <termios.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <pwd.h>
 
 
 #define MAX_FLASH_SIZE	1024*8
@@ -1129,7 +1131,13 @@ void sendcommand_mode(int argc, char **argv) {
 
 
 void read_config () {
-    FILE * f = fopen("util.conf","r");
+    struct passwd *pw = getpwuid(getuid());
+    const char *homedir = pw->pw_dir;
+    printf("%s\n",homedir);
+    char *conffile;
+    conffile = malloc (strlen(homedir+10));
+    sprintf(conffile,"%s/.clunet",homedir);
+    FILE * f = fopen(conffile,"r");
     if (f) {
 	char str[256];
 	while(!feof(f)) {
@@ -1148,6 +1156,9 @@ void read_config () {
 
 
 int main (int argc, char **argv) {
+    
+
+
     read_config();
     if (argc<2) { // если не указаны параметры
 	fprintf(stderr,"Надо указывать параметры!\nНапример:\n%s ./main.hex [99] [/dev/ttyUSB0]\n", argv[0]);
