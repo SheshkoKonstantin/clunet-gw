@@ -192,6 +192,7 @@ int main (void) {
 		    if (strncmp(rbuf+1,"ECHOON",6)==0) {flags|=F_ECHO;} else
 		    if (strncmp(rbuf+1,"ECHOOFF",7)==0) {flags&=~F_ECHO;}
 		    if (strncmp(rbuf+1,"REBOOT",6)==0) {wdt_enable(WDTO_15MS); while (1); }
+		    if (strncmp(rbuf+1,"LOW5",3)==0) { CLUNET_SEND_1; for (uint8_t i=0;i<4*5;i++) _delay_ms(250); CLUNET_SEND_0; }
 		    break;
 		default:
 		    /*

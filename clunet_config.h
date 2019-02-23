@@ -24,7 +24,7 @@ SOFTWARE.
 /* CONFIGURE YOUR DEVICE HERE */
 
 /* Device address (0-254) */
-#define CLUNET_DEVICE_ID 1
+#define CLUNET_DEVICE_ID 254
 
 /* Device name */
 #define CLUNET_DEVICE_NAME "CLUNET-RPi GW"
